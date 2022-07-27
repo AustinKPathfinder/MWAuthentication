@@ -1,14 +1,19 @@
 package com.pathfinderapps.mwauthentication.service;
 
+import java.nio.charset.StandardCharsets;
 import java.security.Key;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
 import javax.transaction.Transactional;
 
+import com.auth0.jwt.JWT;
+import com.auth0.jwt.algorithms.Algorithm;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -84,16 +89,29 @@ public class UserServiceImpl implements UserService, UserDetailsService {
 	public Map<String,String> login(String username, String password) throws Exception {
 		Map<String,String> map = new HashMap<>();
 		log.info("Username is: {}", username); log.info("Password is: {}", password);
+		Algorithm algorithm = Algorithm.HMAC256("mycomppathfinderapps".getBytes(StandardCharsets.UTF_8));
 		User user = userRepo.findByUsername(username);
+		String access_token = JWT.create()
+				.withSubject(username)
+				.withExpiresAt(new Date(System.currentTimeMillis() + 10 * 60 * 1000))
+				.withIssuer("http://localhost:8080")
+				.withClaim("roles", user.getRoles().stream().map(Role::getName).collect(Collectors.toList()))
+				.sign(algorithm);
+		String refresh_token = JWT.create()
+				.withSubject(user.getUsername())
+				.withExpiresAt(new Date(System.currentTimeMillis() + 30 * 60 * 1000))
+				.withIssuer("http://localhost:8080")
+				.sign(algorithm);
 		if(user == null){
 			log.error("User not found!");
 		} else if(!passwordEncoder.matches(password,user.getPassword())) {
 			log.error("User found but Incorrect password!");
 		}
 		else{
-			map.put("username",encrypt(user.getUsername()));
-			map.put("password",encrypt(user.getUsername()));
-			map.put("roles",encrypt(user.getRoles().toString()));
+
+			map.put("access_token",encrypt(access_token));
+			map.put("refresh_token",encrypt(refresh_token));
+
 		}
 		return map;
 	}
